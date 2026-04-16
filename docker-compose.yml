@@ -1,0 +1,17 @@
+services:
+  chatterbox-openai-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatterbox-openai-api
+    env_file:
+      - .env
+    environment:
+      PORT: 4123
+      HOST: 0.0.0.0
+      VOICES_DIR: /app/voices
+    ports:
+      - "4123:4123"
+    volumes:
+      - ./voices:/app/voices
+    restart: unless-stopped

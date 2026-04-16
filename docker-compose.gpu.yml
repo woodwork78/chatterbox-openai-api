@@ -1,0 +1,11 @@
+services:
+  chatterbox-openai-api:
+    environment:
+      DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

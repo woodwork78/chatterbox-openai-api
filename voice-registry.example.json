@@ -1,0 +1,6 @@
+{
+  "voices": {
+    "default": "./voices/default.wav",
+    "assistant": "C:/path/to/private/assistant.wav"
+  }
+}

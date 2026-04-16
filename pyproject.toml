@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chatterbox-openai-api"
+version = "0.1.0"
+description = "OpenAI-compatible FastAPI wrapper for low-latency local Chatterbox streaming TTS."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Open Source Contributors" }
+]
+dependencies = [
+  "chatterbox-streaming @ git+https://github.com/davidbrowne17/chatterbox-streaming.git",
+  "fastapi>=0.115.0",
+  "pydantic-settings>=2.6.1",
+  "uvicorn[standard]>=0.34.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
