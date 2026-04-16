@@ -23,6 +23,28 @@ This project combines the two into a small standalone server that can fit behind
 
 `chatterbox-streaming` is installed from GitHub because the PyPI release can lag behind the streaming API this server targets. `pip install .` pulls it via the URL in `pyproject.toml`. Docker builds install the same dependency at image build time (Git is installed in the image).
 
+### PyTorch, Blackwell (RTX 50xx), and `chatterbox-streaming`
+
+The upstream streaming package pins **PyTorch 2.6 + CUDA 12.4** style wheels. Those builds **do not include `sm_120`**, so on **NVIDIA Blackwell (for example RTX 5090)** you can see `torch.cuda.is_available() == True` while actual model weights still fail with **“no kernel image is available for execution on the device”** unless you use a **newer PyTorch CUDA wheel set**.
+
+**Verified reference stack** (from a working Chatterbox deployment container on the same class of GPU):
+
+- `torch==2.7.0+cu128`
+- `torchaudio==2.7.0+cu128`
+- `torch.cuda.get_arch_list()` includes **`sm_120`**
+
+This repo’s **Dockerfile** installs dependencies with `pip install .`, then **upgrades** `torch` / `torchaudio` to **2.7.0** from the **cu128** index so the image matches that proven stack. `pip` may print a **dependency conflict** warning because `chatterbox-streaming` still declares `torch==2.6.0`; that warning is expected and can be ignored as long as the image build completes.
+
+For **local venv installs** (not Docker), upgrade after `pip install .` so the resolver does not leave you on the older pin:
+
+```bash
+pip install --upgrade torch==2.7.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cu128
+```
+
+On Windows PowerShell the same `pip install --upgrade ...` line applies once your venv is active.
+
+The server **still falls back to CPU** if CUDA load fails (see `GET /health`); treat **`device_active: cpu`** on a machine with a dGPU as a signal to check PyTorch arch support, not “Chatterbox is CPU-only”.
+
 ## API Overview
 
 ### `POST /v1/audio/speech`
@@ -75,6 +97,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install .
+pip install --upgrade torch==2.7.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cu128
 cp .env.example .env
 uvicorn app.main:app --host 0.0.0.0 --port 4123
 ```
@@ -86,6 +109,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install .
+pip install --upgrade torch==2.7.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cu128
 Copy-Item .env.example .env
 uvicorn app.main:app --host 0.0.0.0 --port 4123
 ```
@@ -182,6 +206,8 @@ Recommended local validation:
 3. Measure buffered `POST /v1/audio/speech` total time.
 4. Measure streaming `POST /v1/audio/speech` time-to-first-byte and total stream time.
 5. Compare the results against your current buffered baseline.
+
+For **`response_format: wav`** with **`stream: true`**, many HTTP clients (including `curl`’s `time_starttransfer`) fire as soon as the **RIFF header** is flushed, which is **not** the same as “first synthesized audio chunk.” Prefer **`response_format: pcm`** for curl-style TTFB probes, or read **`tts_stream_first_chunk`** lines from the server logs.
 
 Actual latency depends on GPU model, CUDA stack, container runtime, driver versions, prompt length, and reference voice complexity.
 

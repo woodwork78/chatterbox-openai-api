@@ -15,8 +15,12 @@ COPY app ./app
 COPY voices ./voices
 COPY voice-registry.example.json ./
 
+# chatterbox-streaming pins torch==2.6.x; that build does not ship CUDA kernels for
+# Blackwell (sm_120). Upgrade to the same line proven on RTX 50xx in production stacks.
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
 RUN pip install --upgrade pip \
-    && pip install .
+    && pip install . \
+    && pip install --upgrade torch==2.7.0 torchaudio==2.7.0 --index-url "${TORCH_INDEX_URL}"
 
 EXPOSE 4123
 
