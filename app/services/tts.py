@@ -79,24 +79,54 @@ class TTSService:
             from chatterbox.tts import ChatterboxTTS
 
             self._torch = torch
-            device = self._resolve_device(torch)
-            started = time.perf_counter()
-            model = ChatterboxTTS.from_pretrained(device)
-            self._model = model
-            self._sample_rate = int(model.sr)
-            self._active_device = str(device)
-            self._load_error = None
-            LOGGER.info(
-                "Loaded Chatterbox model on %s in %.2fs",
-                self._active_device,
-                time.perf_counter() - started,
-            )
+            candidates = self._candidate_devices(torch)
+            last_error: Exception | None = None
+            for device in candidates:
+                started = time.perf_counter()
+                try:
+                    model = ChatterboxTTS.from_pretrained(device)
+                    self._model = model
+                    self._sample_rate = int(model.sr)
+                    self._active_device = str(device)
+                    self._load_error = None
+                    LOGGER.info(
+                        "Loaded Chatterbox model on %s in %.2fs",
+                        self._active_device,
+                        time.perf_counter() - started,
+                    )
+                    return
+                except Exception as exc:  # pragma: no cover - runtime integration path
+                    last_error = exc
+                    LOGGER.warning(
+                        "Chatterbox load failed on device=%s (%s); trying next candidate if any",
+                        device,
+                        exc,
+                    )
+                    self._model = None
+                    self._sample_rate = None
+
+            self._active_device = "unavailable"
+            self._load_error = str(last_error) if last_error else "Failed to load Chatterbox model"
+            LOGGER.exception("Failed to load Chatterbox model on all candidate devices")
         except Exception as exc:  # pragma: no cover - runtime integration path
             self._model = None
             self._sample_rate = None
             self._active_device = "unavailable"
             self._load_error = str(exc)
             LOGGER.exception("Failed to load Chatterbox model")
+
+    def _candidate_devices(self, torch_module) -> list[str]:
+        requested = self._settings.device.lower()
+        if requested == "cuda":
+            if torch_module.cuda.is_available():
+                return ["cuda", "cpu"]
+            LOGGER.warning("CUDA requested but unavailable; loading on CPU")
+            return ["cpu"]
+        if requested == "cpu":
+            return ["cpu"]
+        if requested in {"mps"} and getattr(torch_module.backends, "mps", None) and torch_module.backends.mps.is_available():
+            return ["mps", "cpu"]
+        return [requested, "cpu"]
 
     def unload(self) -> None:
         self._model = None
@@ -263,13 +293,6 @@ class TTSService:
         if self._model is None:
             raise ModelNotLoadedError(self._load_error or "Chatterbox model is not loaded")
         return self._model
-
-    def _resolve_device(self, torch_module) -> str:
-        requested = self._settings.device.lower()
-        if requested == "cuda" and not torch_module.cuda.is_available():
-            LOGGER.warning("CUDA requested but unavailable; falling back to CPU")
-            return "cpu"
-        return requested
 
     def _media_type_for_format(self, response_format: str) -> str:
         if response_format == "wav":
